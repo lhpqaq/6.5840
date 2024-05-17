@@ -6,15 +6,18 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"sync"
 )
 
 type Coordinator struct {
 	// Your definitions here.
-	Tasks      map[int]int
-	Files      []string
-	TaskID     int
-	NReduce    int
-	ReduceTask int
+	ReduceTasks map[int]int
+	Files       map[string]int
+	MapDone     bool
+	AllDone     bool
+	TaskID      int
+	NReduce     int
+	mu          sync.Mutex
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -28,22 +31,52 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) GetTask(args *WorkerArgs, reply *WorkerReply) error {
-	if len(c.Files) == 0 {
-		// TODO: 加锁？
-		if c.ReduceTask < c.NReduce {
-			reply.TaskType = 1 // reduce
-			reply.NReduce = c.NReduce
-			reply.ReduceId = c.ReduceTask
-			c.ReduceTask += 1
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.MapDone {
+		for id, status := range c.ReduceTasks {
+			if status == 0 {
+				reply.TaskType = 1 // reduce
+				reply.NReduce = c.NReduce
+				reply.ReduceId = id
+				c.ReduceTasks[id] = 1
+				c.TaskID++
+				return nil
+			}
 		}
+		reply.TaskType = -2 // All Done
 	} else {
+		var fileMap string
+		findMapFile := false
+		for file, status := range c.Files {
+			if status == 0 {
+				fileMap = file
+				findMapFile = true
+			}
+		}
+		if !findMapFile {
+			reply.TaskType = -1 // Mapping
+			return nil
+		}
 		reply.TaskType = 0 // map
-		reply.FileName = c.Files[0]
+		reply.FileName = fileMap
+		c.Files[fileMap] = 1 // Doing
 		reply.TaskId = c.TaskID
-		c.Files = c.Files[1:]
 		reply.NReduce = c.NReduce
 	}
 	c.TaskID++
+	return nil
+}
+
+func (c *Coordinator) GetNotice(args *WorkerArgs, reply *WorkerReply) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if args.X == 0 {
+		c.Files[args.MapFile] = 2 // Done
+	} else {
+		c.ReduceTasks[args.ReduceId] = 2
+	}
 	return nil
 }
 
@@ -67,7 +100,24 @@ func (c *Coordinator) Done() bool {
 	// ret := true
 	ret := false
 	// Your code here.
-
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.MapDone {
+		for _, status := range c.ReduceTasks {
+			if status != 2 {
+				return false
+			}
+		}
+		c.AllDone = true
+	} else {
+		for _, status := range c.Files {
+			if status != 2 {
+				return false
+			}
+		}
+		c.MapDone = true
+	}
+	ret = c.AllDone
 	return ret
 }
 
@@ -76,11 +126,19 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
-	c.Files = files
+	c.Files = make(map[string]int)
+	c.ReduceTasks = make(map[int]int)
+	for _, file := range files {
+		c.Files[file] = 0
+	}
+	for i := 0; i < nReduce; i++ {
+		c.ReduceTasks[i] = 0
+	}
+	c.MapDone = false
+	c.AllDone = false
 	c.TaskID = 1
 	// Your code here.
 	c.NReduce = nReduce
-	c.ReduceTask = 0
 	c.server()
 	return &c
 }

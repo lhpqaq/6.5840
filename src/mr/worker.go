@@ -11,6 +11,7 @@ import (
 	"net/rpc"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Map functions return a slice of KeyValue.
@@ -35,19 +36,42 @@ func Worker(mapf func(string, string) []KeyValue,
 	// Your worker implementation here.
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
-	reply, err := CallForTask()
-	if err != nil {
-		log.Fatalf("call failed!\n")
+	for {
+		reply, err := CallForTask()
+		if err != nil {
+			log.Fatalf("call failed!\n")
+		}
+		if reply.TaskType == -1 { // Mapping
+			time.Sleep(time.Second)
+			continue
+		}
+		if reply.TaskType == -2 { // All Done
+			fmt.Println("All Done")
+			break
+		}
+		if reply.TaskType == 0 {
+			DoMap(reply, mapf)
+			args := WorkerArgs{
+				MapFile: reply.FileName,
+				X:       0,
+			}
+			_, err = CallForNotice(args)
+			if err != nil {
+				log.Fatalf("call notice fail")
+			}
+		}
+		if reply.TaskType == 1 {
+			DoReduce(reply, reducef)
+			args := WorkerArgs{
+				ReduceId: reply.ReduceId,
+				X:        1,
+			}
+			_, err = CallForNotice(args)
+			if err != nil {
+				log.Fatalf("call notice fail")
+			}
+		}
 	}
-	if reply.TaskType == 0 {
-		DoMap(reply, mapf)
-		// TODO: 通知Coor完成任务
-	} else if reply.TaskType == 1 {
-		fmt.Println("reduce")
-		fmt.Println(reply.ReduceId)
-		DoReduce(reply, reducef)
-	}
-
 }
 func DoReduce(reply WorkerReply, reducef func(string, []string) string) {
 	// 读取目录下所有mr-map-$reply.ReduceId-开头的文件
@@ -115,6 +139,24 @@ func CallForTask() (WorkerReply, error) {
 	reply := WorkerReply{}
 
 	ok := call("Coordinator.GetTask", &args, &reply)
+	if ok {
+		fmt.Printf("reply.TaskType %v\n", reply.TaskType)
+		if reply.TaskType == 0 {
+			fmt.Printf("reply.FileName %v\n", reply.FileName)
+		} else {
+			fmt.Printf("reply.TaskType %v\n", reply.TaskType)
+		}
+		return reply, nil
+	} else {
+		fmt.Printf("call failed!\n")
+	}
+	return reply, errors.New("call failed")
+}
+
+func CallForNotice(args WorkerArgs) (WorkerReply, error) {
+	reply := WorkerReply{}
+
+	ok := call("Coordinator.GetNotice", &args, &reply)
 	if ok {
 		fmt.Printf("reply.TaskType %v\n", reply.TaskType)
 		if reply.TaskType == 0 {
