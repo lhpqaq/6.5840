@@ -32,6 +32,8 @@ type WorkerReply struct {
 	TaskType int
 	FileName string
 	TaskId   int
+	NReduce  int
+	ReduceId int
 }
 
 // Add your RPC definitions here.

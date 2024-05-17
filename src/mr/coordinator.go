@@ -10,9 +10,11 @@ import (
 
 type Coordinator struct {
 	// Your definitions here.
-	Tasks  map[int]int
-	Files  []string
-	TaskID int
+	Tasks      map[int]int
+	Files      []string
+	TaskID     int
+	NReduce    int
+	ReduceTask int
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -27,12 +29,19 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 
 func (c *Coordinator) GetTask(args *WorkerArgs, reply *WorkerReply) error {
 	if len(c.Files) == 0 {
-		reply.TaskType = 1 // reduce
+		// TODO: 加锁？
+		if c.ReduceTask < c.NReduce {
+			reply.TaskType = 1 // reduce
+			reply.NReduce = c.NReduce
+			reply.ReduceId = c.ReduceTask
+			c.ReduceTask += 1
+		}
 	} else {
 		reply.TaskType = 0 // map
 		reply.FileName = c.Files[0]
 		reply.TaskId = c.TaskID
 		c.Files = c.Files[1:]
+		reply.NReduce = c.NReduce
 	}
 	c.TaskID++
 	return nil
@@ -70,7 +79,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.Files = files
 	c.TaskID = 1
 	// Your code here.
-
+	c.NReduce = nReduce
+	c.ReduceTask = 0
 	c.server()
 	return &c
 }

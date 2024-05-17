@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/rpc"
 	"os"
+	"path/filepath"
 )
 
 // Map functions return a slice of KeyValue.
@@ -40,33 +41,72 @@ func Worker(mapf func(string, string) []KeyValue,
 	}
 	if reply.TaskType == 0 {
 		DoMap(reply, mapf)
+		// TODO: 通知Coor完成任务
 	} else if reply.TaskType == 1 {
-		// DoReduce(reply.FileName, reducef)
 		fmt.Println("reduce")
+		fmt.Println(reply.ReduceId)
+		DoReduce(reply, reducef)
 	}
 
 }
-
 func DoReduce(reply WorkerReply, reducef func(string, []string) string) {
-	kva, err := ReadKeyValueFromFile(reply.FileName)
+	// 读取目录下所有mr-map-$reply.ReduceId-开头的文件
+	kva := []KeyValue{}
+	files, err := filepath.Glob(fmt.Sprintf("mr-map-%d-*", reply.ReduceId))
 	if err != nil {
-		log.Fatalf("error reading key-value pairs from file: %v", err)
+		log.Fatalf("error finding files for reduce task %d: %v", reply.ReduceId, err)
 	}
-	fmt.Print(kva)
 
+	for _, file := range files {
+		fileKva, err := ReadKeyValueFromFile(file)
+		if err != nil {
+			log.Fatalf("error reading key-value pairs from file %v: %v", file, err)
+		}
+		kva = append(kva, fileKva...)
+	}
+
+	// 合并键值对
+	kvMap := make(map[string][]string)
+	for _, kv := range kva {
+		kvMap[kv.Key] = append(kvMap[kv.Key], kv.Value)
+	}
+
+	// 执行reducef
+	outputFileName := fmt.Sprintf("mr-out-%d", reply.ReduceId)
+	fmt.Println("file name: ", outputFileName)
+	outputFile, err := os.Create(outputFileName)
+	if err != nil {
+		log.Fatalf("error creating output file %v: %v", outputFileName, err)
+	}
+	defer outputFile.Close()
+
+	for key, values := range kvMap {
+		result := reducef(key, values)
+		fmt.Fprintf(outputFile, "%v %v\n", key, result)
+	}
+	// fmt.Print(kva)
 }
 
-func DoMap(reply WorkerReply, mapf func(string, string) []KeyValue) string {
+func DoMap(reply WorkerReply, mapf func(string, string) []KeyValue) {
 	contents, err := ioutil.ReadFile(reply.FileName)
 	if err != nil {
 		log.Fatalf("cannot open %v", reply.FileName)
 	}
 	kva := mapf(reply.FileName, string(contents))
-	outputFileName := fmt.Sprintf("mr-map-%d", reply.TaskId)
-	if err := writeKeyValueToFile(outputFileName, kva); err != nil {
-		log.Fatalf("error writing key-value pairs to file: %v", err)
+	// 根据key分将字典分成reply.NReduce个，分别储存在不同的文件
+	intermediate := make(map[int][]KeyValue)
+	for _, kv := range kva {
+		reduceTask := ihash(kv.Key) % reply.NReduce
+		intermediate[reduceTask] = append(intermediate[reduceTask], kv)
 	}
-	return outputFileName
+	// var outputFiles []string
+	for reduceTask, kvs := range intermediate {
+		outputFileName := fmt.Sprintf("mr-map-%d-%d", reduceTask, reply.TaskId)
+		if err := writeKeyValueToFile(outputFileName, kvs); err != nil {
+			log.Fatalf("error writing key-value pairs to file: %v", err)
+		}
+		// outputFiles = append(outputFiles, outputFileName)
+	}
 }
 
 func CallForTask() (WorkerReply, error) {
