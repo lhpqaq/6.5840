@@ -88,7 +88,6 @@ func DoReduce(reply WorkerReply, reducef func(string, []string) string) {
 		}
 		kva = append(kva, fileKva...)
 	}
-
 	// 合并键值对
 	kvMap := make(map[string][]string)
 	for _, kv := range kva {
@@ -97,7 +96,7 @@ func DoReduce(reply WorkerReply, reducef func(string, []string) string) {
 
 	// 执行reducef
 	outputFileName := fmt.Sprintf("mr-out-%d", reply.ReduceId)
-	fmt.Println("file name: ", outputFileName)
+	// fmt.Println("file name: ", outputFileName)
 	outputFile, err := os.Create(outputFileName)
 	if err != nil {
 		log.Fatalf("error creating output file %v: %v", outputFileName, err)
@@ -140,15 +139,16 @@ func CallForTask() (WorkerReply, error) {
 
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
-		fmt.Printf("reply.TaskType %v\n", reply.TaskType)
-		if reply.TaskType == 0 {
-			fmt.Printf("reply.FileName %v\n", reply.FileName)
-		} else {
-			fmt.Printf("reply.TaskType %v\n", reply.TaskType)
-		}
+		// fmt.Printf("reply.TaskType %v\n", reply.TaskType)
+		// if reply.TaskType == 0 {
+		// 	fmt.Printf("reply.FileName %v\n", reply.FileName)
+		// } else {
+		// 	fmt.Printf("reply.TaskType %v\n", reply.TaskType)
+		// }
 		return reply, nil
 	} else {
-		fmt.Printf("call failed!\n")
+		log.Fatalln("call failed!")
+		// fmt.Printf("call failed!\n")
 	}
 	return reply, errors.New("call failed")
 }
@@ -158,15 +158,16 @@ func CallForNotice(args WorkerArgs) (WorkerReply, error) {
 
 	ok := call("Coordinator.GetNotice", &args, &reply)
 	if ok {
-		fmt.Printf("reply.TaskType %v\n", reply.TaskType)
-		if reply.TaskType == 0 {
-			fmt.Printf("reply.FileName %v\n", reply.FileName)
-		} else {
-			fmt.Printf("reply.TaskType %v\n", reply.TaskType)
-		}
+		// fmt.Printf("reply.TaskType %v\n", reply.TaskType)
+		// if reply.TaskType == 0 {
+		// 	fmt.Printf("reply.FileName %v\n", reply.FileName)
+		// } else {
+		// 	fmt.Printf("reply.TaskType %v\n", reply.TaskType)
+		// }
 		return reply, nil
 	} else {
-		fmt.Printf("call failed!\n")
+		log.Fatalln("call failed!")
+		// fmt.Printf("call failed!\n")
 	}
 	return reply, errors.New("call failed")
 }

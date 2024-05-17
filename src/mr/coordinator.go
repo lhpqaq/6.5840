@@ -45,7 +45,11 @@ func (c *Coordinator) GetTask(args *WorkerArgs, reply *WorkerReply) error {
 				return nil
 			}
 		}
-		reply.TaskType = -2 // All Done
+		if c.AllDone {
+			reply.TaskType = -2
+		} else {
+			reply.TaskType = -1
+		}
 	} else {
 		var fileMap string
 		findMapFile := false
