@@ -27,7 +27,8 @@ type ExampleReply struct {
 type WorkerArgs struct {
 	MapFile  string
 	ReduceId int
-	X        int
+	TaskType int
+	TaskID   int
 }
 
 type WorkerReply struct {

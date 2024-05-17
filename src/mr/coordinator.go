@@ -7,12 +7,18 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time"
 )
+
+type Status struct {
+	status int
+	time   time.Time
+}
 
 type Coordinator struct {
 	// Your definitions here.
-	ReduceTasks map[int]int
-	Files       map[string]int
+	ReduceTasks map[int]Status
+	Files       map[string]Status
 	MapDone     bool
 	AllDone     bool
 	TaskID      int
@@ -36,11 +42,15 @@ func (c *Coordinator) GetTask(args *WorkerArgs, reply *WorkerReply) error {
 
 	if c.MapDone {
 		for id, status := range c.ReduceTasks {
-			if status == 0 {
+			if status.status == 0 {
 				reply.TaskType = 1 // reduce
 				reply.NReduce = c.NReduce
 				reply.ReduceId = id
-				c.ReduceTasks[id] = 1
+				// c.ReduceTasks[id] = 1
+				c.ReduceTasks[id] = Status{
+					status: 1,
+					time:   time.Now(),
+				}
 				c.TaskID++
 				return nil
 			}
@@ -54,7 +64,7 @@ func (c *Coordinator) GetTask(args *WorkerArgs, reply *WorkerReply) error {
 		var fileMap string
 		findMapFile := false
 		for file, status := range c.Files {
-			if status == 0 {
+			if status.status == 0 {
 				fileMap = file
 				findMapFile = true
 			}
@@ -65,7 +75,11 @@ func (c *Coordinator) GetTask(args *WorkerArgs, reply *WorkerReply) error {
 		}
 		reply.TaskType = 0 // map
 		reply.FileName = fileMap
-		c.Files[fileMap] = 1 // Doing
+		// c.Files[fileMap].status = 1 // Doing
+		c.Files[fileMap] = Status{
+			status: 1,
+			time:   time.Now(),
+		}
 		reply.TaskId = c.TaskID
 		reply.NReduce = c.NReduce
 	}
@@ -76,10 +90,14 @@ func (c *Coordinator) GetTask(args *WorkerArgs, reply *WorkerReply) error {
 func (c *Coordinator) GetNotice(args *WorkerArgs, reply *WorkerReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if args.X == 0 {
-		c.Files[args.MapFile] = 2 // Done
+	if args.TaskType == 0 {
+		c.Files[args.MapFile] = Status{
+			status: 2,
+		} // Done
 	} else {
-		c.ReduceTasks[args.ReduceId] = 2
+		c.ReduceTasks[args.ReduceId] = Status{
+			status: 2,
+		}
 	}
 	return nil
 }
@@ -106,16 +124,39 @@ func (c *Coordinator) Done() bool {
 	// Your code here.
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	if c.MapDone {
+		for id, status := range c.ReduceTasks {
+			if status.status == 1 {
+				if time.Since(status.time) >= time.Second*10 {
+					c.ReduceTasks[id] = Status{
+						status: 0,
+					}
+				}
+			}
+		}
+	} else {
+		for file, status := range c.Files {
+			if status.status == 1 {
+				if time.Since(status.time) >= time.Second*10 {
+					c.Files[file] = Status{
+						status: 0,
+					}
+				}
+			}
+		}
+	}
+
 	if c.MapDone {
 		for _, status := range c.ReduceTasks {
-			if status != 2 {
+			if status.status != 2 {
 				return false
 			}
 		}
 		c.AllDone = true
 	} else {
 		for _, status := range c.Files {
-			if status != 2 {
+			if status.status != 2 {
 				return false
 			}
 		}
@@ -130,13 +171,19 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
-	c.Files = make(map[string]int)
-	c.ReduceTasks = make(map[int]int)
+	c.Files = make(map[string]Status)
+	c.ReduceTasks = make(map[int]Status)
 	for _, file := range files {
-		c.Files[file] = 0
+		c.Files[file] = Status{
+			status: 0,
+			time:   time.Now(),
+		}
 	}
 	for i := 0; i < nReduce; i++ {
-		c.ReduceTasks[i] = 0
+		c.ReduceTasks[i] = Status{
+			status: 0,
+			time:   time.Now(),
+		}
 	}
 	c.MapDone = false
 	c.AllDone = false

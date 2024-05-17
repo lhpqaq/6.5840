@@ -36,6 +36,7 @@ func Worker(mapf func(string, string) []KeyValue,
 	// Your worker implementation here.
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
+	var taskId int
 	for {
 		reply, err := CallForTask()
 		if err != nil {
@@ -49,11 +50,13 @@ func Worker(mapf func(string, string) []KeyValue,
 			fmt.Println("All Done")
 			break
 		}
+		taskId = reply.TaskId
 		if reply.TaskType == 0 {
 			DoMap(reply, mapf)
 			args := WorkerArgs{
-				MapFile: reply.FileName,
-				X:       0,
+				MapFile:  reply.FileName,
+				TaskType: 0,
+				TaskID:   taskId,
 			}
 			_, err = CallForNotice(args)
 			if err != nil {
@@ -64,7 +67,8 @@ func Worker(mapf func(string, string) []KeyValue,
 			DoReduce(reply, reducef)
 			args := WorkerArgs{
 				ReduceId: reply.ReduceId,
-				X:        1,
+				TaskType: 1,
+				TaskID:   taskId,
 			}
 			_, err = CallForNotice(args)
 			if err != nil {
@@ -133,8 +137,7 @@ func DoMap(reply WorkerReply, mapf func(string, string) []KeyValue) {
 }
 
 func CallForTask() (WorkerReply, error) {
-	args := WorkerArgs{}
-
+	var args WorkerArgs
 	reply := WorkerReply{}
 
 	ok := call("Coordinator.GetTask", &args, &reply)
