@@ -65,6 +65,7 @@ func Get(cfg *config, ck *Clerk, key string, log *OpLog, cli int) string {
 
 func Put(cfg *config, ck *Clerk, key string, value string, log *OpLog, cli int) {
 	start := int64(time.Since(t0))
+	// fmt.Println("here ", key, value)
 	ck.Put(key, value)
 	end := int64(time.Since(t0))
 	cfg.op()
