@@ -42,10 +42,10 @@ func (ck *Clerk) Get(key string) string {
 	var args = GetArgs{key}
 	var reply = GetReply{}
 	ok := ck.server.Call("KVServer.Get", &args, &reply)
-	if ok {
-		return reply.Value
+	for !ok {
+		ok = ck.server.Call("KVServer.Get", &args, &reply)
 	}
-	return ""
+	return reply.Value
 }
 
 // shared by Put and Append.
@@ -58,13 +58,13 @@ func (ck *Clerk) Get(key string) string {
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) PutAppend(key string, value string, op string) string {
 	// You will have to modify this function.
-	var args = PutAppendArgs{key, value}
+	var args = PutAppendArgs{key, value, nrand()}
 	var reply = PutAppendReply{}
 	ok := ck.server.Call("KVServer."+op, &args, &reply)
-	if ok {
-		return reply.Value
+	for !ok {
+		ok = ck.server.Call("KVServer."+op, &args, &reply)
 	}
-	return ""
+	return reply.Value
 }
 
 func (ck *Clerk) Put(key string, value string) {
