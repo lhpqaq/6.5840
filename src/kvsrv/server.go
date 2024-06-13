@@ -1,12 +1,13 @@
 package kvsrv
 
 import (
+	"fmt"
 	"log"
 	"sync"
 )
 
 const Debug = false
-const ExpireTimes = 20
+const ExpireTimes = 10
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug {
@@ -16,7 +17,8 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 }
 
 type ReqArg struct {
-	val string
+	key string
+	end int
 	exp int
 }
 
@@ -46,6 +48,12 @@ func (kv *KVServer) Put(args *PutAppendArgs, reply *PutAppendReply) {
 	_, ok := kv.data[args.Key]
 	if ok {
 		reply.Value = ""
+		for token, req := range kv.req {
+			if req.key == args.Key {
+				req.end = -1
+				kv.req[token] = req
+			}
+		}
 	} else {
 		reply.Value = ""
 	}
@@ -56,16 +64,27 @@ func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
+	// time.Sleep(time.Millisecond)
 	for token, req := range kv.req {
 		if req.exp > ExpireTimes {
 			delete(kv.req, token)
 			continue
 		}
-		req.exp += 1
+		if token == args.Token {
+			req.exp = 1
+		} else {
+			req.exp += 1
+		}
 		kv.req[token] = req
 	}
 	if _, ok := kv.req[args.Token]; ok {
-		reply.Value = kv.req[args.Token].val
+		end := kv.req[args.Token].end
+		if end < 0 {
+			fmt.Println("fuck, unreachable!!!")
+			reply.Value = kv.data[args.Key]
+		} else {
+			reply.Value = kv.data[args.Key][:end]
+		}
 		return
 	}
 	oldV, ok := kv.data[args.Key]
@@ -76,7 +95,7 @@ func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 		kv.data[args.Key] = ""
 	}
 	kv.data[args.Key] += args.Value
-	kv.req[args.Token] = ReqArg{reply.Value, 1}
+	kv.req[args.Token] = ReqArg{args.Key, len(reply.Value), 1}
 }
 
 func StartKVServer() *KVServer {
